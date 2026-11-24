@@ -107,6 +107,17 @@ def cancel(pick_id, actor):
     return {'id': pick_id, 'status': 'cancelled'}
 
 
+def release_for_correction(cursor, approval_id, actor):
+    """Cancel open picklists of a voided approval and free lot reservations, inside the caller's transaction."""
+    cursor.execute("""SELECT id FROM warehouse_picklists
+                      WHERE approval_id=%s AND status IN ('reserved','packed') FOR UPDATE""", (approval_id,))
+    for row in cursor.fetchall():
+        for line in lock_lines(cursor, row['id']):
+            cursor.execute('UPDATE warehouse_lots SET reserved=reserved-%s WHERE id=%s', (line['units'], line['lot_id']))
+        cursor.execute("UPDATE warehouse_picklists SET status='cancelled' WHERE id=%s", (row['id'],))
+        audit(cursor, actor, 'warehouse.pick_cancelled', 'warehouse_picklist', row['id'], reason='sales_correction')
+
+
 def consume_for_dispatch(cursor, approval_id, actor):
     """Convert an approved warehouse reservation into stock movement inside dispatch's transaction."""
     cursor.execute('SELECT * FROM warehouse_picklists WHERE approval_id=%s AND active_slot=1 FOR UPDATE', (approval_id,))

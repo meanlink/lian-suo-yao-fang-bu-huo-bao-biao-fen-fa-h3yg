@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS approval_orders (
   delivery_shift ENUM('morning','afternoon','night') NOT NULL,
   approved_qty INT NOT NULL,
   reviewer_id INT NULL,
-  status ENUM('pending','approved','rejected','distributed') NOT NULL DEFAULT 'pending',
+  status ENUM('pending','approved','rejected','distributed','voided') NOT NULL DEFAULT 'pending',
   review_note VARCHAR(255) NULL,
   reviewed_at TIMESTAMP NULL,
   FOREIGN KEY (recommendation_id) REFERENCES replenishment_recommendations(id)
@@ -60,6 +60,31 @@ CREATE TABLE IF NOT EXISTS dispatch_records (
   received_at TIMESTAMP NULL,
   status ENUM('queued','sent','received') NOT NULL DEFAULT 'queued',
   note VARCHAR(255) NULL,
+  FOREIGN KEY (approval_id) REFERENCES approval_orders(id)
+);
+CREATE TABLE IF NOT EXISTS sales_corrections (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  snapshot_id INT NOT NULL,
+  revision INT NOT NULL,
+  daily_sales JSON NOT NULL,
+  old_recommended_qty INT NULL,
+  new_recommended_qty INT NULL,
+  replacement_approval_id INT NULL,
+  note VARCHAR(255) NOT NULL DEFAULT '',
+  actor_id INT NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_snapshot_revision (snapshot_id, revision),
+  FOREIGN KEY (snapshot_id) REFERENCES inventory_snapshots(id),
+  FOREIGN KEY (actor_id) REFERENCES users(id)
+);
+CREATE TABLE IF NOT EXISTS sales_correction_orders (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  correction_id INT NOT NULL,
+  approval_id INT NOT NULL,
+  previous_status VARCHAR(20) NOT NULL,
+  outcome ENUM('voided','kept_dispatched') NOT NULL,
+  UNIQUE KEY uq_correction_approval (correction_id, approval_id),
+  FOREIGN KEY (correction_id) REFERENCES sales_corrections(id),
   FOREIGN KEY (approval_id) REFERENCES approval_orders(id)
 );
 CREATE TABLE IF NOT EXISTS audit_logs (

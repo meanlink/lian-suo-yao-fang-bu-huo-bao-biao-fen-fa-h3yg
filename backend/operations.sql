@@ -32,6 +32,29 @@ CREATE TABLE IF NOT EXISTS report_deliveries (
   delivered_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY daily_delivery (subscription_id,report_date)
 );
+CREATE TABLE IF NOT EXISTS sales_corrections (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  snapshot_id INT NOT NULL,
+  revision INT NOT NULL,
+  daily_sales JSON NOT NULL,
+  old_recommended_qty INT NULL,
+  new_recommended_qty INT NULL,
+  replacement_approval_id INT NULL,
+  note VARCHAR(255) NOT NULL DEFAULT '',
+  actor_id INT NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY snapshot_revision (snapshot_id,revision),
+  FOREIGN KEY (snapshot_id) REFERENCES inventory_snapshots(id),
+  FOREIGN KEY (actor_id) REFERENCES users(id)
+);
+CREATE TABLE IF NOT EXISTS sales_correction_orders (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  correction_id INT NOT NULL REFERENCES sales_corrections(id),
+  approval_id INT NOT NULL REFERENCES approval_orders(id),
+  previous_status VARCHAR(20) NOT NULL,
+  outcome ENUM('voided','kept_dispatched') NOT NULL,
+  UNIQUE KEY correction_approval (correction_id,approval_id)
+);
 CREATE TABLE IF NOT EXISTS receipt_exceptions (
   dispatch_id INT PRIMARY KEY REFERENCES dispatch_records(id),
   reason VARCHAR(255) NOT NULL,

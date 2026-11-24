@@ -9,19 +9,21 @@ from .auth import token_for, current_user, require
 from .services.replenishment import forecast_replenishment
 from .middlewares.controls import RequestGuard
 
-from . import operations
+from . import corrections, operations
 from .warehouse import count_routes, lot_routes, migrations, pick_routes, picklists, recall_routes, temperature_routes
 
 
 @asynccontextmanager
 async def lifespan(app):
     operations.initialize()
+    corrections.initialize()
     migrations.initialize()
     yield
 
 
 app=FastAPI(title='连锁药房补货报表分发', version='3.0.0', lifespan=lifespan)
 app.include_router(operations.router)
+app.include_router(corrections.router)
 for feature in (lot_routes, pick_routes, temperature_routes, recall_routes, count_routes):
     app.include_router(feature.router)
 app.add_middleware(RequestGuard)
