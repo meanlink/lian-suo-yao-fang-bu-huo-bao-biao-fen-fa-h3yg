@@ -1,0 +1,1 @@
+Domain routes are intentionally consolidated in main.py for this small vertical slice.

@@ -1,0 +1,102 @@
+name: pharmacy-replenishment
+services:
+  db:
+    image: mysql:8.0
+    container_name: ${COMPOSE_PROJECT_NAME:-pharmacy-replenishment}-db
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-pharmacy_replenishment}
+      MYSQL_USER: ${MYSQL_USER:-pharmacy}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-pharmacy-local}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-pharmacy-root-local}
+    ports:
+      - "127.0.0.1:${DB_PORT:-17759}:3306"
+    volumes:
+      - pharmacy_replenishment_db:/var/lib/mysql
+      - ./backend/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysql --protocol=tcp -h 127.0.0.1 -u\"$${MYSQL_USER}\" -p\"$${MYSQL_PASSWORD}\" \"$${MYSQL_DATABASE}\" -Nse 'SELECT 1'"]
+      interval: 4s
+      timeout: 4s
+      retries: 35
+      start_period: 12s
+  redis:
+    image: redis:7-alpine
+    container_name: ${COMPOSE_PROJECT_NAME:-pharmacy-replenishment}-redis
+    volumes:
+      - pharmacy_replenishment_redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 4s
+      timeout: 3s
+      retries: 20
+  backend:
+    build: ./backend
+    container_name: ${COMPOSE_PROJECT_NAME:-pharmacy-replenishment}-backend
+    environment:
+      MYSQL_HOST: db
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-pharmacy_replenishment}
+      MYSQL_USER: ${MYSQL_USER:-pharmacy}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-pharmacy-local}
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: ${JWT_SECRET:-pharmacy-replenishment-demo-secret}
+      SEED_DEMO: ${SEED_DEMO:-true}
+      SHARED_DIR: /shared
+    ports:
+      - "127.0.0.1:${BACKEND_PORT:-19259}:8000"
+    volumes:
+      - pharmacy_replenishment_shared:/shared
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/health', timeout=3).read()"]
+      interval: 4s
+      timeout: 4s
+      retries: 25
+  worker:
+    build: ./backend
+    container_name: ${COMPOSE_PROJECT_NAME:-pharmacy-replenishment}-worker
+    command: ["python", "-m", "src.worker"]
+    environment:
+      MYSQL_HOST: db
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-pharmacy_replenishment}
+      MYSQL_USER: ${MYSQL_USER:-pharmacy}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-pharmacy-local}
+      REDIS_URL: redis://redis:6379/0
+      SHARED_DIR: /shared
+    volumes:
+      - pharmacy_replenishment_shared:/shared
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import time; from pathlib import Path; p=Path('/shared/worker-heartbeat'); assert p.exists() and time.time()-p.stat().st_mtime < 20"]
+      interval: 4s
+      timeout: 4s
+      retries: 20
+  frontend:
+    build: ./frontend
+    container_name: ${COMPOSE_PROJECT_NAME:-pharmacy-replenishment}-frontend
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-18259}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/healthz | grep -q ok"]
+      interval: 4s
+      timeout: 3s
+      retries: 20
+volumes:
+  pharmacy_replenishment_db:
+    name: pharmacy_replenishment_db
+  pharmacy_replenishment_redis:
+    name: pharmacy_replenishment_redis
+  pharmacy_replenishment_shared:
+    name: pharmacy_replenishment_shared
